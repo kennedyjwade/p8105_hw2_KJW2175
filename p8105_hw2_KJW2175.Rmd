@@ -5,62 +5,286 @@ date: "2025-09-26"
 output: github_document
 ---
 
-##Problem 1
+# Problem 1
 
-1. Cleaning the csv
-2. Breaking up, removing and replacing variables
+### Cleaning the csv, breaking up, removing, and replacing variables
 
 ```{r}
 
 library(tidyverse)
 library(janitor)
+library(readxl)
+library(dplyr)
+library(forcats)
+library(lubridate)
+library(stringr)
+library(tibble)
+library(tidyr)
 
-pols_df = 
+```
+
+
+```{r}
+pols_df <-
     read_csv("./hw2data/pols-month.csv", na = c("NA", ".", "")) |>
-    janitor::clean_names(pols_df)
-    separate(col = mon, 
+    janitor::clean_names() |>
+    separate(mon,
     into = c("year", "month", "day"), 
-    sep = "-"
+    sep = "-") |>
+  
+    mutate(month = case_match(
+      month, 
+      "01" ~ "January", 
+      "02" ~ "February",
+      "03" ~ "March",
+      "04" ~ "April",
+      "05" ~ "May",
+      "06" ~ "June",
+      "07" ~ "July",
+      "08" ~ "August", 
+      "09" ~ "September",
+      "10" ~ "October",
+      "11" ~ "November",
+      "12" ~ "December" 
+    ),
+  president = case_match(
+    prez_gop,
+    1 ~ "gop",
+    .default = case_match(prez_dem, 1 ~ "dem")
+  ))|> 
+  
+  arrange (desc(year)) |>
+  select(-prez_dem, -prez_gop, -day)
+
+```
+
+### Cleaning snp.csv data 
+
+```{r}
+snp_df <-
+    read_csv("./hw2data/snp.csv", na = c("NA", ".", "")) |>
+    janitor::clean_names() |>
+    separate(date,
+    into = c("month", "day", "year"), 
+    sep = "/"
   ) |>
-    mutate(mon = case_match(
-      mon, 
-      "01" ~ January, 
-      "02" ~ February,
-      "03" ~ March,
-      "04" ~ April,
-      "05" ~ May,
-      "06" ~ June,
-      "07" ~ July,
-      "08" ~ August, 
-      "09" ~ September
-      "10" ~ October
-      
-      
-      
-    )
+    mutate(month = case_match(
+      month, 
+      "1" ~ "Jan", 
+      "2" ~ "Feb",
+      "3" ~ "Mar",
+      "4" ~ "Apr",
+      "5" ~ "May",
+      "6" ~ "Jun",
+      "7" ~ "Jul",
+      "8" ~ "Aug", 
+      "9" ~ "Sept",
+      "10" ~ "Oct",
+      "11" ~ "Nov",
+      "12" ~ "Dec" 
+    )) |>
+    mutate(year = as.numeric(year),
+    year=ifelse(year<=15, year+2000, year+1900),
+    year=as.character(year)) |>
+  select(year, month, everything(), - day)
+```
+
+### Tidying the employment data
+
+```{r}
+unemployment_df <-
+    read_csv("./hw2data/unemployment.csv", na = c("NA", ".", "")) |>
+    janitor::clean_names() |>
+    pivot_longer(
+      jan:dec,
+      names_to = "month",
+      values_to  = "percent_unemployed") |> 
+  
+  select (year, month,percent_unemployed) |> 
+     arrange(desc(year)) |>
+  mutate(year = as.character(year))
+```
+
+### Joining the datasets by merging snp into pols, and merging unemployment into the result.
+
+```{r}
+final_df =
+  left_join(pols_df, snp_df, by = c("year", "month")) |>
+  left_join(unemployment_df, by = c("year", "month"))
+
+```
+
+ The analysis used three datasets.The `pols_df` dataset, the `snp_df` dataset, and the `unemployment_df` dataset. The political dataset contained monthly information about presidential party affiliation, with columns for `year`, `month`, `gov_gop`,`sen_dem`,`rep_gop`,`gov_dem`,`sen_dem`,`rep_dem,` and `president`.The snp dataset recorded monthly stock market values, with columns for `year`, `month`, and `close`. The unemployment dataset reported monthly unemployment rates for each year, with columns for `year`, `month`, and `percent_unemployed`. After cleaning and merging these datasets, the resulting dataset contains `r nrow(final_df)` rows and `r ncol(final_df)` columns, spanning the years `r min(as.numeric(final_df$year))` to `r max(as.numeric(final_df$year))` .Variables in the final dataset include  `year`, `month`, `gov_gop`,`sen_dem`,`rep_gop`,`gov_dem`,`sen_dem`,`rep_dem,` `president`,`percent_unemployed`, and `close`
+ 
+ 
+# Problem 2 
+ 
+### Specifying the sheet in the Excel file, omitting non-data entries using arguments in read_excel,using reasonable variable names, omitting rows that do not include dumpster-specific data,rounding the number of sports balls to the nearest integer,converting the result to an integer variable (using as.integer)
+ 
+```{r}
+mr_trash_df <-
+  read_excel("./hw2data/202509 Trash Wheel collection Data.xlsx", sheet = 1, range ="A2:N709") |>
+  janitor::clean_names() |>
+  mutate(sports_balls = as.integer(sports_balls)) |>
+  mutate(service = "mr_trash_wheel") |>
+  mutate(year = as.numeric(year))
+
+prof_trash_df <-
+  read_excel("./hw2data/202509 Trash Wheel collection Data.xlsx", sheet = 2, range ="A2:M134") |>
+janitor::clean_names() |>
+mutate(service = "prof_trash_wheel") |>
+mutate(year = as.numeric(year))
+
+gwyn_trash_df <-
+  read_excel("./hw2data/202509 Trash Wheel Collection Data.xlsx", sheet = 4, range = "A2:L351") |>
+  janitor::clean_names() |>
+  mutate(service = "gwyn_trash_wheel") |>
+  mutate(year = as.numeric(year))
+
+combined_trash_df <- 
+  full_join(mr_trash_df, prof_trash_df) |>
+  full_join(gwyn_trash_df) |>
+  arrange(desc(year))
+
+```
+ 
+
+## Finding the total weight of trash collected by Professor Trash Wheel and the total number of cigarette butts collected by Gwynnda in June of 2022.
+
+```{r}
+print(
+  filter(combined_trash_df, service == "prof_trash_wheel") |>
+    summarise(total_weight = sum(weight_tons))
+)
+
+
+print(
+  filter(combined_trash_df, service == "gwyn_trash_wheel", month == "June", year == 2022) |>
+    summarise(total_cig_butts = sum(cigarette_butts))
+)
+```
+
+The `combined_trash_df` dataset contains 1,188 records of trash collection. Key variables include `dumpster`, `month`, `year`, `date`, `weight_tons`, `volume_cubic_yards`, `plastic_bottles`, `polystyrene`, `cigarette_butts`, `glass_bottles`, `plastic_bags`, `wrappers`, `sports_balls`, `homes_powered`, and `service. Across the recorded period, Professor Trash Wheel collected a total of 282.26 tons of trash. In June 2022, Gwynnda collected a total of 18,120 cigarette butts.
+
+# Problem 3
+
+### Pivoting the monthly columns into long format, splitting the date string into year, month, day, and cleaning column names and dropping unnecessary columns
+
+```{r}
+zillow_df <-
+  read_csv('hw2data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv', na = c("NA", ".", "")) |>
+  janitor::clean_names() |>
+  pivot_longer(
+    x2015_01_31:x2024_08_31,
+    names_to = "file_date", 
+    values_to = "obs_rent"
+  ) |>
+  separate(file_date, 
+    into = c("year", "month", "day"),
+    sep = "_"
+  ) |>   
+  rename("zip_code" = "region_name") |>
+  rename("county" = "county_name") |>
+  mutate(county = str_replace(county, " County$", "")) |>
+  mutate(year = str_replace(year, "^x", "")) |>
+  mutate(year = as.numeric(year)) |>
+  select(-region_type, -state_name)
+```
+
+### Entering zip code data 
+
+```{r}
+zip_codes_df <-
+  read_csv('hw2data/Zip Codes.csv', na = c("NA", ".", "")) |>
+  janitor::clean_names() |>
+    separate(file_date, 
+    into = c("month", "day", "year"),
+    sep = "/"
+  ) |>
+  mutate(year = as.numeric(year)) |>
+  mutate(year = year + 2000) |>
+  rename("state" = "state_fips") |>
+  mutate(state = "NY") |>
+  select(zip_code, neighborhood)
+```
+
+### Combinging the zillow_df and the zip_codes_df and inding the total observations that exist 
+
+```{r}
+zillow_zip_codes_df <-
+  left_join(zillow_df, zip_codes_df, by = "zip_code") |>
+  arrange(desc(year)) |>
+  select(year, month, day, obs_rent, neighborhood, county, city, state, zip_code, everything())
+```
+
+The combined dataset `zillow_zip_codes`has 7,516 observations and 12 variables.
+
+### Finding how many unique ZIP codes are included and how many unique neighborhoods
+
+```{r}
+zillow_zip_codes_df |>
+  pull(zip_code) |>
+  unique() |>
+  length() 
+
+zillow_zip_codes_df |>
+  pull(neighborhood) |>
+  unique() |>
+  length()
+```
+
+
+The combined dataset  `zillow_zip_codes` has 7,516 observations and 12 variables.There are 149 unique zip codes and 43 unique neighborhoods 
+
+### Finding which ZIP codes appear in the ZIP code dataset but not in the Zillow Rental Price dataset
+
+```{r}
+missing_zips <- zip_codes_df |> 
+  anti_join(zillow_df, by = "zip_code") |> 
+  pull(zip_code) |>
+  unique()
+
+print(missing_zips)
+```
+
+These ZIP codes could be excluded from the Zillow dataset because they are P.O. boxes or predominantly commercial areas.
+
+### Making a table that shows the 10 ZIP codes (along with the borough and neighborhood) with largest drop in price from January 2020 to 2021. 
+
+```{r}
+price_data <- zillow_zip_codes_df |>
+  filter(year %in% c(2020, 2021) & month == "01") |>
+  pivot_wider(
+    c("zip_code", "county", "neighborhood"), 
+    names_from = year,                           
+    values_from = obs_rent,                      
+    names_prefix = "price_",
+    values_fn = mean 
+  ) |>
+  mutate(across(starts_with("price_"), as.numeric)) 
 
 ```
 
 ```{r}
-pols_df = 
-  separate(col = mon, 
-    into = c("year", "month", "day"), 
-    sep = "-"
+
+top_drop_tab <- price_data |>
+  mutate(price_drop = price_2020 - price_2021) |>
+  filter(!is.na(price_drop)) |>
+  arrange(desc(price_drop)) |>
+  head(10) |>
+  select(
+    zip_code, 
+    county, 
+    neighborhood, 
+    price_Jan_2020 = price_2020, 
+    price_Jan_2021 = price_2021, 
+    price_drop
   )
 
+print(top_drop_tab)
 ```
 
-```{r}
- pols_df =  
-  mutate(
-    month = month.name[month],                       
-  president = ifelse(prez_gop == 1, "gop", "dem")  
-```
-
-```{r}
-pols_df =  
-  select(-prez_dem, -prez_gop, -day)
-```
+The table shows that several ZIP codes in Manhattan experienced the largest declines in rental prices during the COVID-19 pandemic. Areas like Lower Manhattan, Gramercy Park, and the Lower East Side were particularly affected. These declines may be due to factors like the switch to remote work, reduced demand for downtown housing, and changing rental patterns during the pandemic. 
 
 
 
